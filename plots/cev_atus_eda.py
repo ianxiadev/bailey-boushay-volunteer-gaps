@@ -2,8 +2,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-CEV_PATH = 'data/cev_state_2017_2023.csv'
-ATUS_PATH = 'data/time_use_2025.csv'
+CEV_PATH = 'data/cev_state_level_summary.csv'
+ATUS_PATH = 'data/american_time_use_survey.csv'
 
 
 def load_data(path: str) -> pd.DataFrame:
