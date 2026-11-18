@@ -15,32 +15,21 @@ def load_data(path: str) -> pd.DataFrame:
     return df
 
 
-def count_missing_data(df: pd.DataFrame) -> int:
-    """
-    Takes a dataset and returns the number of rows that are missing a
-    value in at least one column.
-    """
-    missing_per_row = df.isnull().sum(axis=1)
-    has_missing = missing_per_row > 0
-    return has_missing.sum()
-
-
 def clean_cev(df: pd.DataFrame) -> pd.DataFrame:
     """
     Takes the full CEV dataset and returns a new DataFrame with a State
     column and one column per survey year (2017, 2019, 2021, 2023)
     holding the formal volunteering rate as a percentage.
     """
-    cev_cleaned = pd.DataFrame()
-    cev_cleaned['State'] = df['State']
+    cev_cleaned = df.loc[:, ['State']]
 
     # 2017-2021 rates are strings like '33.8%'
     rates = df['State 2017 Formal Volunteering Rate']
-    cev_cleaned['2017'] = rates.str.strip('%').astype(float)
+    cev_cleaned['2017'] = rates.str.strip('%').astype('float')
     rates = df['State 2019 Formal Volunteering Rate']
-    cev_cleaned['2019'] = rates.str.strip('%').astype(float)
+    cev_cleaned['2019'] = rates.str.strip('%').astype('float')
     rates = df['State 2021 Formal Volunteering Rate']
-    cev_cleaned['2021'] = rates.str.strip('%').astype(float)
+    cev_cleaned['2021'] = rates.str.strip('%').astype('float')
 
     # 2023 rates are proportions like 0.328
     rates = df['State 2023 Formal Volunteering Rate']
@@ -52,15 +41,16 @@ def clean_cev(df: pd.DataFrame) -> pd.DataFrame:
 def clean_atus(df: pd.DataFrame) -> pd.DataFrame:
     """
     Takes the full ATUS dataset and returns a new DataFrame with an
-    Activity column and men and women columns holding the average
-    minutes per weekday spent on each activity.
+    Activity column and the average minutes per weekday and per weekend
+    day that men and women spend on each activity.
     """
-    atus_cleaned = pd.DataFrame()
-    atus_cleaned['Activity'] = df['Activity']
+    atus_cleaned = df.loc[:, ['Activity']]
 
-    # the dataset gives hours per weekday; 60 minutes in an hour
-    atus_cleaned['men'] = df['Average per weekday, men'] * 60
-    atus_cleaned['women'] = df['Average per weekday, women'] * 60
+    # the dataset gives hours per day; 60 minutes in an hour
+    atus_cleaned['men weekday'] = df['Average per weekday, men'] * 60
+    atus_cleaned['women weekday'] = df['Average per weekday, women'] * 60
+    atus_cleaned['men weekend'] = df['Average per weekend day, men'] * 60
+    atus_cleaned['women weekend'] = df['Average per weekend day, women'] * 60
 
     return atus_cleaned
 
@@ -70,27 +60,34 @@ def plot_state_trend(df: pd.DataFrame, state: str) -> None:
     Saves a bar chart of the given state's formal volunteering rate in
     each survey year to plots/cev_state_trend.png.
     """
-    years = ['2017', '2019', '2021', '2023']
     one_state = df[df['State'] == state]
-    sns.barplot(data=one_state[years], color='blue')
-    plt.title(f'Formal Volunteering Rate in {state}')
+    rates = one_state.loc[:, ['2017', '2019', '2021', '2023']]
+    sns.barplot(data=rates, color='tab:blue')
+    plt.title('Formal Volunteering Rate in ' + state)
     plt.xlabel('Survey year')
     plt.ylabel('Formal volunteering rate (%)')
     plt.savefig('plots/cev_state_trend.png', bbox_inches='tight')
     plt.close()
 
 
-def plot_rate_distribution(df: pd.DataFrame) -> None:
+def plot_state_change(df: pd.DataFrame, state: str) -> None:
     """
-    Saves a box plot of the formal volunteering rate across all states
-    in each survey year to plots/cev_rate_distribution.png.
+    Saves a bar chart of how much the given state's formal volunteering
+    rate changed between each pair of survey years to
+    plots/cev_state_change.png.
     """
-    rates = df.drop(columns='State')
-    sns.boxplot(data=rates, color='lightgrey')
-    plt.title('Formal Volunteering Rate Across States by Year')
-    plt.xlabel('Survey year')
-    plt.ylabel('Formal volunteering rate (%)')
-    plt.savefig('plots/cev_rate_distribution.png', bbox_inches='tight')
+    one_state = df[df['State'] == state]
+    one_state['2017 to 2019'] = one_state['2019'] - one_state['2017']
+    one_state['2019 to 2021'] = one_state['2021'] - one_state['2019']
+    one_state['2021 to 2023'] = one_state['2023'] - one_state['2021']
+    changes = one_state.loc[:, ['2017 to 2019', '2019 to 2021',
+                                '2021 to 2023']]
+    sns.barplot(data=changes, color='tab:blue')
+    plt.axhline(0, color='black', linewidth=0.8)
+    plt.title('Change in Formal Volunteering Rate in ' + state)
+    plt.xlabel('Survey period')
+    plt.ylabel('Change in percentage points')
+    plt.savefig('plots/cev_state_change.png', bbox_inches='tight')
     plt.close()
 
 
@@ -101,7 +98,7 @@ def plot_weekday_volunteering(df: pd.DataFrame, activity: str) -> None:
     plots/atus_weekday_volunteering.png.
     """
     one_activity = df[df['Activity'] == activity]
-    minutes = one_activity.drop(columns='Activity')
+    minutes = one_activity.loc[:, ['men weekday', 'women weekday']]
     sns.barplot(data=minutes)
     plt.title('Weekday Time in Organizational, Civic,\n'
               'and Religious Activities (ATUS 2025)')
@@ -112,17 +109,21 @@ def plot_weekday_volunteering(df: pd.DataFrame, activity: str) -> None:
     plt.close()
 
 
-def plot_activity_minutes(df: pd.DataFrame) -> None:
+def plot_weekday_vs_weekend(df: pd.DataFrame, activity: str) -> None:
     """
-    Saves a bar chart of average weekday minutes in every activity
-    category for men and women to plots/atus_activity_minutes.png.
+    Saves a bar chart comparing average weekday and weekend minutes that
+    men and women spend in the given activity category to
+    plots/atus_weekday_vs_weekend.png.
     """
-    df.plot(x='Activity', kind='barh', figsize=(8, 6))
-    plt.title('Average Weekday Minutes by Activity and Sex')
-    plt.xlabel('Average minutes per weekday')
-    plt.ylabel('Activity')
-    plt.legend(title='Group')
-    plt.savefig('plots/atus_activity_minutes.png', bbox_inches='tight')
+    one_activity = df[df['Activity'] == activity]
+    minutes = one_activity.loc[:, ['men weekday', 'women weekday',
+                                   'men weekend', 'women weekend']]
+    sns.barplot(data=minutes, color='tab:blue')
+    plt.title('Weekday vs. Weekend Time in Organizational, Civic,\n'
+              'and Religious Activities (ATUS 2025)')
+    plt.xlabel('Group and day type')
+    plt.ylabel('Average minutes per day')
+    plt.savefig('plots/atus_weekday_vs_weekend.png', bbox_inches='tight')
     plt.close()
 
 
@@ -130,17 +131,18 @@ def main():
     atus_activity = 'Organizational, civic, and religious activities'
 
     cev_raw = load_data(CEV_PATH)
-    print(f'CEV has {count_missing_data(cev_raw)} rows with missing data')
+    # every column's Non-Null Count matches the number of rows, so no
+    # data is missing
+    cev_raw.info()
     cev = clean_cev(cev_raw)
     plot_state_trend(cev, 'WA')
-    plot_rate_distribution(cev)
+    plot_state_change(cev, 'WA')
 
     atus_raw = load_data(ATUS_PATH)
-    print(f'ATUS has {count_missing_data(atus_raw)} rows with missing '
-          'data')
+    atus_raw.info()
     atus = clean_atus(atus_raw)
     plot_weekday_volunteering(atus, atus_activity)
-    plot_activity_minutes(atus)
+    plot_weekday_vs_weekend(atus, atus_activity)
 
 
 if __name__ == '__main__':
